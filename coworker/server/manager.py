@@ -44,6 +44,7 @@ from ..automation import Schedule, ScheduledTask, Scheduler, TaskRun, TaskStore
 from ..connectors import (
     Gateway,
     MessageSource,
+    TelegramHistoryStore,
     connect_connector,
     connector_list,
     disconnect_connector,
@@ -190,6 +191,11 @@ class SessionManager:
         self.scheduler = Scheduler(
             self.task_store, self._run_scheduled_task, extra_tick=self.resume_due_wakes
         )
+        # Read-only mirror of the user's private work Telegram chat (populated by the
+        # separate `telegram_listener` process, if/when it's set up — see
+        # coworker/connectors/telegram_history_store.py). Constructed unconditionally, like
+        # task_store: with no listener configured yet, the tools just report "no messages".
+        self.telegram_history = TelegramHistoryStore(base / "telegram_history.db")
         # Personas: registry + lifecycle state under this manager's data dir. Installed as the
         # process singleton so agents.get_agent resolves persona ids (incl. third-party) here.
         self.personas = PersonaRegistry(state_path=base / "personas.json")
@@ -460,6 +466,7 @@ class SessionManager:
             secrets=self.secrets,
             task_store=self.task_store,
             wake_store=self.wakes,
+            telegram_history=self.telegram_history,
             session_id=session_id,
             audit_sink=self.audit_store.append,
             roots=roots,
@@ -2602,6 +2609,7 @@ class SessionManager:
         await self.stop_gateway()
         await self.mcp.aclose()
         self.audit_store.close()
+        self.telegram_history.close()
 
     # -- automation (scheduled tasks) -------------------------------------------
     def approval_prompt_data(self, session_id: str, request) -> dict[str, Any]:
@@ -2751,6 +2759,7 @@ class SessionManager:
             # task, and instructions that mention timing ("every day at 5:32pm…") otherwise tempt
             # it to create another automation instead of running this one.
             task_store=None,
+            telegram_history=self.telegram_history,
             session_id=session_id,
             audit_sink=self.audit_store.append,
             # Scheduled runs respect the same per-session connection hierarchy as live sessions:

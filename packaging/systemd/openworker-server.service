@@ -1,0 +1,14 @@
+[Unit]
+Description=OpenWorker headless server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=COWORKER_STATE_DIR=%h/.config/coworker
+ExecStart=%h/Documents/openworker/.venv/bin/openworker-server
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

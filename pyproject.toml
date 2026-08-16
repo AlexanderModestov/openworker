@@ -44,6 +44,12 @@ dev = ["pytest>=8", "pytest-asyncio", "httpx"]
 # aiohttp is slack-bolt's Socket Mode transport at runtime (and the FakeSlack test harness
 # drives the real handler) — declare it so CI installs it, not just transitively.
 messaging = ["python-telegram-bot>=21", "slack-bolt>=1.18", "aiohttp>=3.9"]
+# Telethon (MTProto user-session client) for the standalone read-only work-chat listener
+# (coworker/connectors/telegram_listener.py). Kept as its OWN extra, separate from
+# `messaging` — it authenticates as a real personal Telegram account, a fundamentally
+# different risk/auth model than the Bot-API connectors above, so installing it is a
+# deliberate, separate opt-in.
+telegram_user = ["telethon>=1.36"]
 # Interactive Cowork browser automation.
 browser = ["playwright>=1.44"]
 # AWS Bedrock provider (lazy-imported; desktop builds bundle it, pip users opt in).
@@ -53,6 +59,7 @@ bedrock = ["boto3>=1.34"]
 openworker = "coworker.cli:main"
 openworker-server = "coworker.server.run:main"
 openworker-connectors = "coworker.connectors.cli:main"
+openworker-telegram-listener = "coworker.connectors.telegram_listener:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
