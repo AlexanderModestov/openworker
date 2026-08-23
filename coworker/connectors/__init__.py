@@ -37,6 +37,8 @@ from .setup import (
 from .integration_tools import make_integration_tools
 from .tools import make_send_file_tool, make_send_message_tool
 from .tool_defs import connector_for_tool
+from .telegram_history_store import TelegramHistoryStore
+from .telegram_history_tool import make_telegram_history_tools
 
 __all__ = [
     "BasePlatformAdapter",
@@ -67,6 +69,8 @@ __all__ = [
     "make_send_file_tool",
     "make_send_message_tool",
     "connector_for_tool",
+    "TelegramHistoryStore",
+    "make_telegram_history_tools",
     "SlackAdapter",
     "SlackRelayAdapter",
     "TelegramAdapter",

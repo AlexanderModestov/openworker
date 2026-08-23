@@ -15,11 +15,13 @@ from .selfwake import selfwake_tools
 from .subscriptions import subscription_tools
 from .config import load_config
 from .connectors import (
+    TelegramHistoryStore,
     connector_list,
     load_settings,
     make_integration_tools,
     make_send_file_tool,
     make_send_message_tool,
+    make_telegram_history_tools,
 )
 from .engine import Approver, TurnEngine
 from .environment import environment_context
@@ -217,6 +219,11 @@ def build_engine(
     connector_filter: Optional[set[str]] = None,
     # A set (static snapshot) or a zero-arg callable (live, re-evaluated per load_skill).
     skill_filter: Optional[set[str] | Callable[[], set[str]]] = None,
+    # Read-only mirror of the user's private work Telegram chat (a Telethon user-session
+    # listener writes it; this engine only ever reads). Unconditional on agent/connector
+    # flags — same gating as task_store/wake_store, since it's its own read-only surface,
+    # not a messaging connector.
+    telegram_history: Optional[TelegramHistoryStore] = None,
 ) -> TurnEngine:
     ws = Path(workspace).expanduser().resolve() if workspace else None
     if agent.needs_workspace and ws is None:
@@ -268,6 +275,12 @@ def build_engine(
                     routing_targets=routing_targets,
                 )
             )
+    # Work-chat history (read-only): a private mirror of the user's Telegram work chat, kept
+    # by a separate Telethon listener process. Available whenever the manager wires a store,
+    # regardless of agent.messaging/connector_filter — it's its own read-only surface, not a
+    # send-capable connector.
+    if telegram_history is not None:
+        registry.register_all(make_telegram_history_tools(telegram_history))
     # Knowledge surfaces with a multi-root workspace can ask the user mid-task for another folder.
     if agent.family == "knowledge" and root_list:
         registry.register(request_directory_tool())

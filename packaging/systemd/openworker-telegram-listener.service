@@ -1,0 +1,14 @@
+[Unit]
+Description=OpenWorker Telegram work-chat listener (Telethon, read-only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=COWORKER_STATE_DIR=%h/.config/coworker
+ExecStart=%h/Documents/openworker/.venv/bin/openworker-telegram-listener
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
