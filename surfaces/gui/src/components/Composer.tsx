@@ -53,6 +53,10 @@ interface Props {
   // session; after the first turn the fact lives in the topbar subtitle (§22) — no
   // interactive-then-disabled control.
   running: boolean;
+  // A proposal gate (team/items) is awaiting the user: the engine is suspended,
+  // so `running` is true — but typing must stay possible, because a typed reply
+  // IS an answer (decline-with-feedback). Unblocks Send while the gate is up.
+  gateOpen?: boolean;
   connected: boolean;
   // False when the default model's provider has no key — the composer shows a "connect a model"
   // banner and routes sends to setup (preserving the draft) instead of dropping them.
@@ -156,7 +160,14 @@ export function Composer(props: Props) {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    const max = parseFloat(getComputedStyle(el).lineHeight || "22") * 4;
+    // The cap must include the vertical PADDING: scrollHeight does, so a
+    // padding-blind cap left the box ~20px short and scrolled the top padding
+    // (plus the first line) out of the clip while typing (OPE-106). Six lines —
+    // team briefs outgrew four.
+    const cs = getComputedStyle(el);
+    const pad =
+      (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+    const max = (parseFloat(cs.lineHeight) || 22) * 6 + pad;
     const next = Math.min(el.scrollHeight, max);
     el.style.height = `${Math.max(next, 24)}px`;
     el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
@@ -318,7 +329,7 @@ export function Composer(props: Props) {
     const t = (skill ? text.slice(skill.length + 1) : text).trim();
     if (
       (!t && attachments.length === 0 && !skill) ||
-      props.running ||
+      (props.running && !props.gateOpen) ||
       dictation?.recording ||
       dictationBusy
     )
@@ -441,7 +452,7 @@ export function Composer(props: Props) {
       {attachNotice && (
         <div
           data-testid="attach-notice"
-          className="max-w-3xl mx-auto mb-1.5 flex items-center gap-2 rounded-lg border border-warnInk/30 bg-warnSoft px-3 py-1.5 text-[12.5px] text-warnInk"
+          className="max-w-3xl mx-auto mb-1.5 flex items-center gap-2 rounded-lg border border-warnInk/30 bg-warnSoft px-3 py-1.5 text-[13px] text-warnInk"
         >
           <span className="flex-1">{attachNotice}</span>
           <button
@@ -502,7 +513,7 @@ export function Composer(props: Props) {
                 >
                   <span className="text-[13px] font-medium text-accent shrink-0">/{s.name}</span>
                   <span className="text-[12px] text-faint truncate flex-1">{s.description}</span>
-                  <span className="text-[10.5px] px-1.5 py-0.5 rounded-full border border-line text-faint shrink-0">
+                  <span className="text-[11px] px-1.5 py-0.5 rounded-full border border-line text-faint shrink-0">
                     {s.scope}
                   </span>
                 </button>
@@ -512,8 +523,12 @@ export function Composer(props: Props) {
         )}
         <textarea
           ref={textareaRef}
-          className="w-full block px-3.5 pt-3.5 pb-1.5 text-[14.5px]"
-          placeholder={props.placeholder || "Ask the coworker…  (drop or paste files)"}
+          className="w-full block px-3.5 pt-3.5 pb-1.5 text-[14px]"
+          placeholder={
+            props.gateOpen
+              ? "Reply to adjust the proposal — or use the buttons above"
+              : props.placeholder || "Ask the coworker…  (drop or paste files)"
+          }
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKey}
@@ -581,7 +596,7 @@ export function Composer(props: Props) {
             />
           ) : null}
 
-          {dictationBusy === "Transcribing…" && <span className="text-[11.5px] text-accent">Transcribing…</span>}
+          {dictationBusy === "Transcribing…" && <span className="text-[12px] text-accent">Transcribing…</span>}
 
           <span className="ml-auto" />
 
@@ -650,8 +665,8 @@ export function Composer(props: Props) {
             </button>
           )}
 
-          {/* send / stop */}
-          {props.running ? (
+          {/* send / stop — a pending gate re-opens Send: the reply resolves it */}
+          {props.running && !props.gateOpen ? (
             <button className="btn danger" onClick={props.onInterrupt}>
               ⏹ Stop
             </button>
@@ -712,7 +727,7 @@ function UsageChip({
   // across the whole session, never just the last turn; "Input" is the fresh
   // (uncached) share — the cached share sits in the cache rows at its own price.
   const stat = (label: string, value: number) => (
-    <div className="flex items-baseline justify-between text-[11.5px] leading-snug">
+    <div className="flex items-baseline justify-between text-[12px] leading-snug">
       <span className="text-faint">{label}</span>
       <span className="text-ink tabular-nums">{formatTokens(value)}</span>
     </div>
@@ -720,7 +735,7 @@ function UsageChip({
   return (
     <div className="relative">
       <button
-        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11.5px] text-muted hover:text-ink hover:bg-paper shrink-0"
+        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[12px] text-muted hover:text-ink hover:bg-paper shrink-0"
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -756,7 +771,7 @@ function UsageChip({
           >
             {contextWindow ? (
               <div className="mb-2.5">
-                <div className="text-[10.5px] uppercase tracking-[0.06em] text-faint font-semibold mb-1">
+                <div className="text-[11px] uppercase tracking-[0.06em] text-faint font-semibold mb-1">
                   Context window
                 </div>
                 <div className="h-1.5 rounded-full bg-line overflow-hidden">
@@ -765,16 +780,16 @@ function UsageChip({
                     style={{ width: `${pct}%` }}
                   />
                 </div>
-                <div className="mt-1 text-[11.5px] text-muted tabular-nums">
+                <div className="mt-1 text-[12px] text-muted tabular-nums">
                   {formatTokens(usage.context)} of {formatTokens(contextWindow)} · {pct}%
                 </div>
               </div>
             ) : usage.context > 0 ? (
-              <div className="mb-2.5 text-[11.5px] text-muted tabular-nums">
+              <div className="mb-2.5 text-[12px] text-muted tabular-nums">
                 In context now: {formatTokens(usage.context)} tokens
               </div>
             ) : null}
-            <div className="text-[10.5px] uppercase tracking-[0.06em] text-faint font-semibold mb-1">
+            <div className="text-[11px] uppercase tracking-[0.06em] text-faint font-semibold mb-1">
               Session totals
             </div>
             <div className="flex flex-col gap-1.5">
@@ -803,12 +818,12 @@ function UsageChip({
                 </div>
               ))}
             </div>
-            <div className="mt-2 pt-2 border-t border-line flex items-baseline justify-between text-[11.5px]">
+            <div className="mt-2 pt-2 border-t border-line flex items-baseline justify-between text-[12px]">
               <span className="text-faint">Total</span>
               <span className="text-ink tabular-nums">{formatTokens(total)} tokens</span>
             </div>
             {model && !modelLabels?.[model] && contextWindow === undefined && (
-              <div className="mt-1 text-[10.5px] text-faint leading-snug">
+              <div className="mt-1 text-[11px] text-faint leading-snug">
                 Context meter unavailable for custom models.
               </div>
             )}

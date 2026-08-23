@@ -17,6 +17,43 @@ from coworker.providers.openai_responses import (
     convert_tools,
 )
 
+
+def test_responses_custom_base_url_reaches_sdk(monkeypatch):
+    captured: dict = {}
+
+    def fake_openai(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace()
+
+    monkeypatch.setattr("openai.OpenAI", fake_openai)
+    provider = OpenAIResponsesProvider(
+        api_key="ark-key",
+        base_url="https://ark.example/api/v3/",
+    )
+
+    provider._ensure_client()
+
+    assert captured == {
+        "api_key": "ark-key",
+        "base_url": "https://ark.example/api/v3",
+    }
+
+
+def test_stock_openai_responses_path_unchanged(monkeypatch):
+    """Lockdown: stock OpenAI must not receive a vendor base URL."""
+    captured: dict = {}
+
+    def fake_openai(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace()
+
+    monkeypatch.setattr("openai.OpenAI", fake_openai)
+    provider = OpenAIResponsesProvider(api_key="openai-key")
+
+    provider._ensure_client()
+
+    assert captured == {"api_key": "openai-key"}
+
 # -- fakes ------------------------------------------------------------------------
 
 
@@ -254,7 +291,7 @@ def test_convert_tools_flattens_function_schemas():
 # -- complete() ----------------------------------------------------------------------
 
 
-def test_complete_text_turn_and_request_shape():
+def test_complete_default_request_shape_PathsUnchanged():
     fake = _FakeClient(response=_response([_message_item("hello")]))
     provider = OpenAIResponsesProvider(client=fake)
     turn = provider.complete(
@@ -271,6 +308,22 @@ def test_complete_text_turn_and_request_shape():
     assert fake.kwargs["store"] is False
     assert fake.kwargs["include"] == ["reasoning.encrypted_content"]
     assert fake.kwargs["reasoning"] == {"summary": "auto"}
+
+
+def test_complete_can_omit_reasoning_summary_but_keep_encrypted_content():
+    """BytePlus accepts encrypted reasoning output but rejects reasoning.summary."""
+    fake = _FakeClient(response=_response([_message_item("hello")]))
+    provider = OpenAIResponsesProvider(client=fake, reasoning_summary=False)
+
+    provider.complete(model="m", messages=[{"role": "user", "content": "hi"}])
+
+    assert "reasoning" not in fake.kwargs
+    assert fake.kwargs["include"] == ["reasoning.encrypted_content"]
+
+
+def test_reasoning_summary_capability_rejects_unknown_mode():
+    with pytest.raises(TypeError, match="reasoning_summary must be a bool"):
+        OpenAIResponsesProvider(client=SimpleNamespace(), reasoning_summary="auto")
 
 
 def test_complete_parses_function_calls_with_call_ids():
@@ -489,6 +542,42 @@ def test_stream_final_turn_carries_tool_calls_and_sidecar():
         "reasoning",
         "function_call",
     ]
+
+
+def test_stream_rebuilds_turn_when_terminal_output_is_empty():
+    """The subscription backend leaves `output` EMPTY on response.completed — items only
+    ever stream. The turn must be rebuilt from the output_item.done events, or text and
+    tool calls silently vanish (live bug: a turn produced deltas, then persisted empty)."""
+    events = [
+        SimpleNamespace(type="response.output_text.delta", delta="pong"),
+        SimpleNamespace(
+            type="response.output_item.done", item=_message_item("pong")
+        ),
+        SimpleNamespace(
+            type="response.output_item.done", item=_call_item("call_1", "f", '{"x": 1}')
+        ),
+        SimpleNamespace(type="response.completed", response=_response([])),
+    ]
+    provider = OpenAIResponsesProvider(client=_FakeClient(events=events))
+    turn = list(
+        provider.stream(model="m", messages=[{"role": "user", "content": "x"}])
+    )[-1].turn
+    assert turn.text == "pong"
+    assert turn.finish_reason == "tool_calls"
+    assert turn.tool_calls[0].arguments == {"x": 1}
+
+
+def test_stream_falls_back_to_deltas_when_no_items_repeat_anywhere():
+    events = [
+        SimpleNamespace(type="response.output_text.delta", delta="po"),
+        SimpleNamespace(type="response.output_text.delta", delta="ng"),
+        SimpleNamespace(type="response.completed", response=_response([])),
+    ]
+    provider = OpenAIResponsesProvider(client=_FakeClient(events=events))
+    turn = list(
+        provider.stream(model="m", messages=[{"role": "user", "content": "x"}])
+    )[-1].turn
+    assert turn.text == "pong" and turn.finish_reason == "stop"
 
 
 def test_stream_without_terminal_event_keeps_accumulated_text():

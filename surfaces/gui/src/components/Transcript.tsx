@@ -3,6 +3,7 @@ import type { ApprovalDecision, Item } from "../types";
 import { shortArgs } from "./ApprovalCard";
 import { humanizeAsk, humanizeTool, type HumanLine } from "../humanize";
 import { Markdown } from "./Markdown";
+import { BoardWakeCard } from "./BoardWakeCard";
 import { ConnectorMessageCard } from "./ConnectorMessageCard";
 import { Icon } from "./Icon";
 
@@ -20,7 +21,7 @@ function ClampedUserText({ text }: { text: string }) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="block ml-auto mt-1.5 text-[12.5px] font-medium opacity-75 hover:opacity-100"
+        className="block ml-auto mt-1.5 text-[13px] font-medium opacity-75 hover:opacity-100"
       >
         {open ? "less…" : "more…"}
       </button>
@@ -50,7 +51,7 @@ function BubbleMeta({ text, ts, align }: { text: string; ts?: number; align: "le
     <div className="relative h-0 select-none">
       <div
         className={
-          "absolute top-1 flex items-center gap-1.5 text-[10.5px] leading-none text-faint whitespace-nowrap opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity " +
+          "absolute top-1 flex items-center gap-1.5 text-[11px] leading-none text-faint whitespace-nowrap opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity " +
           (align === "right" ? "right-0" : "left-0")
         }
       >
@@ -156,10 +157,10 @@ function buildRows(items: TurnItem[]): TurnRow[] {
 
 function approvalChip(resolved: ApprovalDecision | undefined) {
   if (resolved === "deny")
-    return <span className="text-[10.5px] px-1.5 rounded-full bg-dangerSoft text-danger shrink-0">✕ declined</span>;
+    return <span className="text-[11px] px-1.5 rounded-full bg-dangerSoft text-danger shrink-0">✕ declined</span>;
   return (
     <span
-      className="text-[10.5px] px-1.5 rounded-full bg-okSoft text-ok shrink-0"
+      className="text-[11px] px-1.5 rounded-full bg-okSoft text-ok shrink-0"
       title={resolved ? `approved · ${resolved.replace(/_/g, " ")}` : "approved"}
     >
       ✓ approved
@@ -184,7 +185,7 @@ function StepRow({ tool, approval }: { tool: ToolItem; approval?: ApprovalItem }
   return (
     <div>
       <div className="group flex items-baseline gap-2 px-2 py-0.5 rounded-lg hover:bg-paper" data-testid="turn-step">
-        <span className={"w-3.5 text-center text-[10px] shrink-0 " + (failed ? "text-danger" : running ? "text-accent" : "text-ok")}>
+        <span className={"w-3.5 text-center text-[11px] shrink-0 " + (failed ? "text-danger" : running ? "text-accent" : "text-ok")}>
           {running ? <span className="spinner" data-testid="step-running" /> : "●"}
         </span>
         <LineText
@@ -199,7 +200,7 @@ function StepRow({ tool, approval }: { tool: ToolItem; approval?: ApprovalItem }
         {approval && approvalChip(approval.resolved)}
         {!!tool.standingRule && (
           <span
-            className="text-[10.5px] px-1.5 rounded-full bg-tealSoft text-tealInk shrink-0"
+            className="text-[11px] px-1.5 rounded-full bg-tealSoft text-tealInk shrink-0"
             data-testid="tool-standing-rule"
             title={`Auto-allowed by this automation's standing approval: ${tool.standingRule}. Revoke on its Automations page.`}
           >
@@ -226,7 +227,7 @@ function StepRow({ tool, approval }: { tool: ToolItem; approval?: ApprovalItem }
         )}
       </div>
       {raw && (
-        <pre className="ml-8 mr-2 my-1 px-2.5 py-1.5 rounded-lg border border-line bg-paper font-mono text-[11.5px] leading-relaxed text-muted whitespace-pre-wrap break-words max-h-56 overflow-auto">
+        <pre className="ml-8 mr-2 my-1 px-2.5 py-1.5 rounded-lg border border-line bg-paper font-mono text-[12px] leading-relaxed text-muted whitespace-pre-wrap break-words max-h-56 overflow-auto">
           {`${tool.name}  ${shortArgs(tool.args)}`}
           {tool.preview ? `\n→ ${tool.preview.length > 1500 ? tool.preview.slice(0, 1500) + "\n…" : tool.preview}` : ""}
         </pre>
@@ -264,7 +265,7 @@ function TurnGroup({
   return (
     <details className="stepgroup" open={open}>
       <summary
-        className="stepgroup-head flex items-center gap-2 py-0.5 cursor-pointer select-none text-[12.5px] text-faint hover:text-muted"
+        className="stepgroup-head flex items-center gap-2 py-0.5 cursor-pointer select-none text-[13px] text-faint hover:text-muted"
         onClick={(e) => {
           e.preventDefault(); // drive open/closed from state, not the native toggle
           setUserToggle(!open);
@@ -305,7 +306,7 @@ function TurnGroup({
               </div>
             ) : row.type === "ask" ? (
               <div className="flex items-baseline gap-2 px-2 py-0.5" key={i} data-testid="turn-ask">
-                <span className={"w-3.5 text-center text-[10px] shrink-0 " + (row.approval.resolved === "deny" ? "text-danger" : "text-ok")}>●</span>
+                <span className={"w-3.5 text-center text-[11px] shrink-0 " + (row.approval.resolved === "deny" ? "text-danger" : "text-ok")}>●</span>
                 <LineText line={humanizeAsk(row.approval.name, row.approval.args)} />
                 {approvalChip(row.approval.resolved)}
               </div>
@@ -341,6 +342,8 @@ interface Props {
   // Re-run the failed turn (no new user message). Offered only on a retriable notice that
   // is the transcript tail of an idle session — anywhere else the error is history.
   onRetry?: () => void;
+  // mcp_error notices: "Open Connectors" jumps to the Connectors page (Integrations surface).
+  onOpenConnectors?: () => void;
   // MEMORY-SPEC §5.1: undo a just-announced write. `previous` (set when the write was
   // an edit) is the text to restore; without it the memory is deleted.
   onUndoMemory?: (id: number, previous?: string) => void;
@@ -359,7 +362,49 @@ export function retryAnchor(items: Item[]): number {
   return -1;
 }
 
-export function Transcript({ items, running, streamingText, onRetry, onUndoMemory }: Props) {
+// One quiet line for a dead MCP server (owner ruling 2026-08-21): the summary names the
+// server; the raw error (stderr excerpts, tracebacks) hides behind a Details disclosure;
+// "Open Connectors" is the fix/remove path. Never a wall of blue text in the transcript.
+function McpNotice({
+  item,
+  onOpenConnectors,
+}: {
+  item: Extract<Item, { kind: "notice" }>;
+  onOpenConnectors?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mcp-notice" data-testid="mcp-notice">
+      <div className="mcp-notice-line">
+        <span aria-hidden>⚠</span>
+        <span className="min-w-0 truncate">{item.text}</span>
+        <button
+          className="mcp-notice-act"
+          data-testid="mcp-notice-details"
+          onClick={() => setOpen((v) => !v)}
+        >
+          Details {open ? "⌃" : "⌄"}
+        </button>
+        {onOpenConnectors && (
+          <button
+            className="mcp-notice-act"
+            data-testid="mcp-notice-connectors"
+            onClick={onOpenConnectors}
+          >
+            Open Connectors
+          </button>
+        )}
+      </div>
+      {open && (
+        <pre className="mcp-notice-detail" data-testid="mcp-notice-detail">
+          {item.detail}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+export function Transcript({ items, running, streamingText, onRetry, onOpenConnectors, onUndoMemory }: Props) {
   // §33 grouping: a turn = the maximal run of assistant/tool/resolved-approval items between
   // breakers (user, connector, notices, plan/dir requests…). Trailing assistant texts are the
   // ANSWER and render as bubbles after the group; interior assistant texts are narration and
@@ -415,11 +460,17 @@ export function Transcript({ items, running, streamingText, onRetry, onUndoMemor
         const { item } = block;
         switch (item.kind) {
           case "connector":
-            return <ConnectorMessageCard source={item.source} key={bi} />;
+            // Board wakes get their own collapsed-by-default card — a report,
+            // not a foreign message (owner ask 2026-08-16).
+            return item.source.connector === "board" ? (
+              <BoardWakeCard source={item.source} key={bi} />
+            ) : (
+              <ConnectorMessageCard source={item.source} key={bi} />
+            );
           case "user":
             return (
               <div className="group self-end max-w-[78%] flex flex-col items-end" key={bi}>
-                <div className="bubble-user px-3.5 py-2.5 rounded-[14px_14px_4px_14px] bg-solid text-onSolid text-[14.5px] leading-relaxed whitespace-pre-wrap">
+                <div className="bubble-user px-3.5 py-2.5 rounded-[14px_14px_4px_14px] bg-solid text-onSolid text-[14px] leading-relaxed whitespace-pre-wrap">
                   {item.attachments && item.attachments.length > 0 && (
                     <div className="bubble-attachments">
                       {item.attachments.map((a, i) =>
@@ -478,6 +529,10 @@ export function Transcript({ items, running, streamingText, onRetry, onUndoMemor
               </div>
             );
           case "notice":
+            if (item.server && item.detail)
+              return (
+                <McpNotice key={bi} item={item} onOpenConnectors={onOpenConnectors} />
+              );
             return (
               <div className={"notice " + (item.tone === "warn" ? "warn" : "")} key={bi}>
                 {item.text}
