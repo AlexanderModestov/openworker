@@ -241,19 +241,16 @@ def build_engine(
     connector_filter: Optional[set[str]] = None,
     # A set (static snapshot) or a zero-arg callable (live, re-evaluated per load_skill).
     skill_filter: Optional[set[str] | Callable[[], set[str]]] = None,
-<<<<<<< HEAD
     # Read-only mirror of the user's private work Telegram chat (a Telethon user-session
     # listener writes it; this engine only ever reads). Unconditional on agent/connector
     # flags — same gating as task_store/wake_store, since it's its own read-only surface,
     # not a messaging connector.
     telegram_history: Optional[TelegramHistoryStore] = None,
-=======
     # Auto-Approve flags (spec Part 8 / §1.5). None ⇒ read the config.toml value; the server
     # passes its prefs-backed booleans so the GUI Settings toggle takes effect. Both stores
     # are user-global, preserving the "a repo can't enable this" invariant.
     auto_approve: Optional[bool] = None,
     auto_approve_shadow: Optional[bool] = None,
->>>>>>> upstream/main
     # Persona-carried skill folders (OPE-58): the bundle's skills/ dir joins the loader so
     # its skills are readable by load_skill, not just listed by the filter.
     extra_skill_dirs: Optional[list[str | Path]] = None,
