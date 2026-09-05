@@ -809,16 +809,27 @@ def _verify_bedrock(fields: dict[str, Any], timeout: float) -> dict[str, Any]:
             }
         if kind == "ProfileNotFound":
             return {"ok": False, "error": f"{exc}"}
-        if kind == "ClientError":
-            code = (getattr(exc, "response", {}) or {}).get("Error", {}).get("Code", "")
+        # botocore raises MODELED subclasses of ClientError (class name
+        # "AccessDeniedException", not "ClientError"), so detect by the response shape,
+        # never the class name — a name check sent every modeled error to the generic
+        # fallback and hid the specific message (owner report 2026-08-17).
+        code = (getattr(exc, "response", None) or {}).get("Error", {}).get("Code", "")
+        if code:
             if code in ("UnrecognizedClientException", "InvalidSignatureException"):
                 return {"ok": False, "error": "AWS rejected the credentials."}
             if code in ("AccessDeniedException", "AccessDenied"):
                 return {
                     "ok": False,
-                    "error": "Credentials work but lack Bedrock access (bedrock:ListFoundationModels).",
+                    "error": (
+                        "Credentials work but lack Bedrock access "
+                        "(bedrock:ListFoundationModels) — check the key's policy, its "
+                        "expiry (short-term keys last up to 12h), and that the region "
+                        "matches where the key was created."
+                    ),
                 }
-            return {"ok": False, "error": f"AWS Bedrock returned {code or kind}."}
+            if code == "ExpiredTokenException":
+                return {"ok": False, "error": "The credentials have expired — generate a new key."}
+            return {"ok": False, "error": f"AWS Bedrock returned {code}."}
         return {"ok": False, "error": f"Couldn't reach AWS Bedrock ({kind})."}
     return {"ok": True}
 

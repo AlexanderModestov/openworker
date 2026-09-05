@@ -21,6 +21,7 @@ export type EventType =
   | "input_rejected"
   | "interrupted"
   | "model_changed"
+  | "mode_notice"
   | "memory_saved"
   | "compacting"
   | "compacted"
@@ -37,7 +38,20 @@ import type { MessageSource } from "./api";
 
 // "always_task" persists to the owning automation's task record (standing scoped
 // approval, UX-DECISIONS §25) — offered only on automation-run approval cards, in-app.
-export type ApprovalDecision = "once" | "deny" | "always_tool" | "always_command" | "always_task" | "readonly_session";
+export type ApprovalDecision =
+  | "once"
+  | "deny"
+  | "always_tool"
+  | "always_command"
+  | "always_domain"
+  | "always_task"
+  // OPE-136 §4: durable per-MCP-tool trust — writes a rule to the user-local
+  // override store; survives sessions; revocable on the server's detail page.
+  | "always_trust"
+  // OPE-136 run grant: covers the exact tool for the remainder of the current
+  // answer only; in-memory, cleared at the run boundary. EXTERNAL family only.
+  | "this_run"
+  | "readonly_session";
 
 export interface TodoItem {
   content: string;
@@ -124,7 +138,13 @@ export type Item =
   // `hidden` = results the user's privacy filters removed before the agent saw them
   // (from the tool message's `_display` sidecar; the agent-visible content has no trace).
   // `standingRule` = the task-scoped rule that auto-allowed this call ("tool → target").
-  | { kind: "tool"; id: string; name: string; args: any; status: string; preview?: string; hidden?: number; standingRule?: string }
+  // `reviewerReason` + `allowAnyway` = an Auto-Approve reviewer deny (spec 8.4): the full
+  // reason is user-facing only (the agent got a terse refusal), and allowAnyway offers the
+  // one-shot exact-action override.
+  // `approvalOrigin` = why the call ran without a card: "reviewer" (auto-approved by the
+  // Auto-Approve reviewer; `approvalNote` carries its one-line reason) or "bypass"
+  // (bypass-approvals mode). Rendered as a quiet debugging chip, deliberately subtle.
+  | { kind: "tool"; id: string; name: string; args: any; status: string; preview?: string; hidden?: number; standingRule?: string; reviewerReason?: string; allowAnyway?: boolean; approvalOrigin?: string; approvalNote?: string; approvalGrant?: string }
   | {
       kind: "approval";
       name: string;
@@ -134,9 +154,24 @@ export type Item =
       // The exact target a standing rule could pin (server-computed) — with a run
       // context, the card offers "Allow every time" (§25).
       standingTarget?: string;
+      // web_search only (§1.9): the LIVE configured provider name, resolved server-side
+      // when the card was raised — the grant description names the actual destination.
+      searchProvider?: string;
+      // OPE-114 §1: set when the action would run a file the agent itself created or
+      // downloaded this session ("setup.py was created by the agent 3 steps ago"). The
+      // one fact that cannot be read off the command text. Engine-authored, fixed
+      // vocabulary — never file contents.
+      provenance?: string;
+      // The Auto-Approve reviewer answered `unsure` and raised this card: its one-line
+      // reason, rendered quietly so "why am I being asked?" is answered in place.
+      reviewerUnsure?: string;
       // Server-classified: this shell command only reads locally, so the card may offer
       // the session-wide "Allow read-only commands" grant.
       readonlyOk?: boolean;
+      // OPE-136 finding 4: where an MCP call actually goes, from the server DEF (the
+      // user's own config, never the server's claims). Drives the honest scope chip —
+      // "leaves this computer → host" (http) / "runs a local program" (stdio).
+      mcpDestination?: { transport: string; host?: string };
       resolved?: ApprovalDecision;
     }
   | {
@@ -193,6 +228,10 @@ export type Item =
       tone: "info" | "warn";
       text: string;
       retriable?: boolean;
+      // `title` switches the one-line status notice to a block: a heading plus
+      // blank-line-separated paragraphs, left-aligned. Used for the Auto-Approve
+      // banner, which is prose rather than a status line.
+      title?: string;
       // mcp_error notices: the failing server's name + the full error, rendered as one
       // quiet line with the detail behind a disclosure and an Open-Connectors action.
       server?: string;

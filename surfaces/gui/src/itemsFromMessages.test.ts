@@ -132,4 +132,19 @@ describe("itemsFromMessages mcp failure", () => {
     ] as any);
     expect(items[0]).toEqual({ kind: "notice", tone: "warn", text: "something opaque went wrong" });
   });
+
+  it("renders a project_presence notice as one quiet info line, never an error", () => {
+    const items = itemsFromMessages([
+      {
+        role: "notice",
+        kind: "project_presence",
+        text: "“notes” already has project memory (3 entries) — bind it by name or start a session there to use it.",
+      },
+    ] as any);
+    expect(items[0]).toEqual({
+      kind: "notice",
+      tone: "info",
+      text: "“notes” already has project memory (3 entries) — bind it by name or start a session there to use it.",
+    });
+  });
 });

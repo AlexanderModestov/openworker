@@ -41,6 +41,7 @@ from .base import (
     ModelCapabilities,
     ProviderClient,
     StreamChunk,
+    TokenUsage,
     ToolCall,
 )
 from .capabilities import capabilities_for
@@ -234,6 +235,24 @@ def _sidecar_extras(items: list[dict[str, Any]]) -> dict[str, Any]:
     return {}
 
 
+def _usage_from(usage: Any) -> Optional[TokenUsage]:
+    """Responses-API usage → normalized counts (OPE-101). `input_tokens` INCLUDES the
+    cached share, so fresh input = input_tokens − cached_tokens (the same convention as
+    the Chat Completions and Anthropic adapters); `output_tokens` already includes
+    reasoning tokens (billed as output). Defensive reads throughout — compat/older
+    servers may omit `input_tokens_details`."""
+    if usage is None:
+        return None
+    prompt = int(getattr(usage, "input_tokens", 0) or 0)
+    details = getattr(usage, "input_tokens_details", None)
+    cached = int(getattr(details, "cached_tokens", 0) or 0)
+    return TokenUsage(
+        input=max(prompt - cached, 0),
+        output=int(getattr(usage, "output_tokens", 0) or 0),
+        cache_read=cached,
+    )
+
+
 def _parse_response(response: Any) -> AssistantTurn:
     """One Responses result → an AssistantTurn (+ `_openai` extras)."""
     items = [_dump(item) for item in getattr(response, "output", None) or []]
@@ -279,6 +298,7 @@ def _parse_response(response: Any) -> AssistantTurn:
         raw=response,
         reasoning="".join(summaries) or None,
         extras=_sidecar_extras(items),
+        usage=_usage_from(getattr(response, "usage", None)),
     )
 
 
