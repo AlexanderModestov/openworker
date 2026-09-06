@@ -79,15 +79,15 @@ python3.12 --version
 ## 3. Get the code
 
 ```bash
-git clone https://github.com/AlexanderModestov/openworker.git ~/ManyChat/Projects/openworker
-cd ~/ManyChat/Projects/openworker
+git clone https://github.com/AlexanderModestov/openworker.git ~/Projects/openworker
+cd ~/Projects/openworker
 ```
 
 Any path works; the rest of this guide uses `REPO` for it and `STATE` for the state dir.
 Export them once per terminal so the commands below can be pasted as-is:
 
 ```bash
-export REPO=~/ManyChat/Projects/openworker
+export REPO=~/Projects/openworker
 export STATE=~/openworker-data
 export COWORKER_STATE_DIR="$STATE"
 ```
