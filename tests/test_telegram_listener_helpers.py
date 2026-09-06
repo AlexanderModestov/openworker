@@ -5,7 +5,48 @@ from __future__ import annotations
 
 import pytest
 
-from coworker.connectors.telegram_listener import _match_keywords, _prompt, _require_config
+from types import SimpleNamespace
+
+from coworker.connectors.telegram_listener import (
+    _match_keywords,
+    _prompt,
+    _require_config,
+    _resolve_chats,
+)
+
+
+def _dialog(entity_id: int, *, channel: bool) -> SimpleNamespace:
+    return SimpleNamespace(entity=SimpleNamespace(id=entity_id, channel=channel))
+
+
+def _fake_peer_id(entity) -> int:
+    # Stand-in for telethon.utils.get_peer_id: channels get the -100 prefix, users don't.
+    return -1000000000000 - entity.id if entity.channel else entity.id
+
+
+def test_resolve_chats_accepts_marked_channel_id():
+    dialogs = [_dialog(361072099, channel=True)]
+    resolved = _resolve_chats(dialogs, ["-1000361072099"], peer_id=_fake_peer_id)
+    assert resolved == [("-1000361072099", dialogs[0].entity)]
+
+
+def test_resolve_chats_accepts_legacy_bare_id_and_canonicalizes_it():
+    # An older --login saved d.entity.id (unmarked). It must still resolve, and the chat_id
+    # written to the store must be the marked form so it matches event.chat_id later.
+    dialogs = [_dialog(361072099, channel=True)]
+    resolved = _resolve_chats(dialogs, ["361072099"], peer_id=_fake_peer_id)
+    assert resolved == [("-1000361072099", dialogs[0].entity)]
+
+
+def test_resolve_chats_user_id_is_unchanged():
+    dialogs = [_dialog(42, channel=False)]
+    assert _resolve_chats(dialogs, ["42"], peer_id=_fake_peer_id) == [("42", dialogs[0].entity)]
+
+
+def test_resolve_chats_raises_on_unknown_chat():
+    dialogs = [_dialog(1, channel=False)]
+    with pytest.raises(SystemExit):
+        _resolve_chats(dialogs, ["1", "999"], peer_id=_fake_peer_id)
 
 
 def test_match_keywords_case_insensitive():

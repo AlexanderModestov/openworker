@@ -54,6 +54,38 @@ def _match_keywords(text: str, keywords: list[str]) -> Optional[list[str]]:
     return hits or None
 
 
+def _resolve_chats(dialogs, chat_ids: list[str], *, peer_id) -> list[tuple[str, Any]]:
+    """Map the configured chat ids onto the account's dialogs.
+
+    A StringSession persists only the auth key, not Telethon's entity cache, so on every
+    unattended start a bare `int(chat_id)` can't be turned into an input entity (no
+    access_hash) — hence resolving through `get_dialogs()`, which both warms the cache and
+    gives us the entity objects. Accepts the marked id (`utils.get_peer_id`, e.g. -100…
+    for channels) that `--login` now saves, and also the legacy bare `entity.id` an older
+    `--login` stored. Returns [(canonical_marked_id, entity)]; the marked id is what
+    `event.chat_id` reports, so backfill and live events write under the same chat_id.
+    `peer_id` is injected (telethon.utils.get_peer_id) so this stays importable/testable
+    without Telethon."""
+    by_id: dict[str, tuple[str, Any]] = {}
+    for d in dialogs:
+        marked = str(peer_id(d.entity))
+        by_id[marked] = (marked, d.entity)
+        by_id.setdefault(str(d.entity.id), (marked, d.entity))
+    resolved, missing = [], []
+    for c in chat_ids:
+        hit = by_id.get(str(c))
+        if hit is None:
+            missing.append(str(c))
+        else:
+            resolved.append(hit)
+    if missing:
+        raise SystemExit(
+            f"configured chat(s) {missing} not found among this account's dialogs — "
+            "run `openworker-telegram-listener --login` again and re-pick the chat(s)."
+        )
+    return resolved
+
+
 def _prompt(prompt: str, *, validate=None, error: str = "invalid input, try again") -> str:
     """input() that re-asks on a blank/invalid answer instead of crashing with a raw
     traceback — this is a hand-typed (or occasionally mis-pasted) terminal flow, so a bad
@@ -77,7 +109,7 @@ def _prompt(prompt: str, *, validate=None, error: str = "invalid input, try agai
 
 # -- login (interactive, one-time) -------------------------------------------------------
 def _cmd_login(secrets: SecretStore) -> int:
-    from telethon import TelegramClient
+    from telethon import TelegramClient, utils
     from telethon.sessions import StringSession
 
     profile = secrets.get(PROFILE) or {}
@@ -111,7 +143,9 @@ def _cmd_login(secrets: SecretStore) -> int:
             error=f"enter one or more indices between 0 and {len(dialogs) - 1}, comma-separated",
         )
         picked = [dialogs[int(p.strip())] for p in choice.split(",")]
-        chat_ids = [str(d.entity.id) for d in picked]
+        # Marked id (-100… for channels/supergroups), not the bare entity.id: it encodes the
+        # peer type, and it's what event.chat_id reports at run time.
+        chat_ids = [str(utils.get_peer_id(d.entity)) for d in picked]
         print("Selected: " + ", ".join(f"{d.name!r}" for d in picked))
 
         kw_raw = input(
@@ -180,13 +214,15 @@ async def _ingest_message(store, message, *, chat_id: str, keywords: list[str], 
     )
 
 
-async def _backfill(client, store, *, chat_id: str, keywords: list[str], own_id: int) -> None:
+async def _backfill(
+    client, store, *, chat_id: str, entity: Any, keywords: list[str], own_id: int
+) -> None:
     resume_from = store.latest_msg_id(chat_id)
     kwargs: dict[str, Any] = {"reverse": True}
     if resume_from:
         kwargs["min_id"] = resume_from
     count = 0
-    async for message in client.iter_messages(int(chat_id), **kwargs):
+    async for message in client.iter_messages(entity, **kwargs):
         await _ingest_message(store, message, chat_id=chat_id, keywords=keywords, own_id=own_id)
         count += 1
     store.set_backfill_complete(chat_id, True)
@@ -200,14 +236,13 @@ async def _heartbeat_loop(store) -> None:
 
 
 async def _run(secrets: SecretStore) -> int:
-    from telethon import TelegramClient, events
+    from telethon import TelegramClient, events, utils
     from telethon.sessions import StringSession
 
     from .telegram_history_store import TelegramHistoryStore
 
     profile = secrets.get(PROFILE) or {}
     _require_config(profile)
-    chat_ids = [str(c) for c in profile["chat_ids"]]
     keywords = list(profile.get("keywords") or [])
 
     client = TelegramClient(
@@ -225,11 +260,20 @@ async def _run(secrets: SecretStore) -> int:
     store.set_own_user_id(str(me.id))
     own_id = me.id
 
-    for chat_id in chat_ids:
-        if not store.is_backfill_complete(chat_id):
-            await _backfill(client, store, chat_id=chat_id, keywords=keywords, own_id=own_id)
+    # get_dialogs() warms Telethon's entity cache (see _resolve_chats) — without it a fresh
+    # StringSession can't resolve a chat id to an input entity.
+    chats = _resolve_chats(
+        await client.get_dialogs(), [str(c) for c in profile["chat_ids"]], peer_id=utils.get_peer_id
+    )
+    chat_ids = [chat_id for chat_id, _ in chats]
 
-    chat_entities = [int(c) for c in chat_ids]
+    for chat_id, entity in chats:
+        if not store.is_backfill_complete(chat_id):
+            await _backfill(
+                client, store, chat_id=chat_id, entity=entity, keywords=keywords, own_id=own_id
+            )
+
+    chat_entities = [entity for _, entity in chats]
 
     @client.on(events.NewMessage(chats=chat_entities))
     async def _on_new(event) -> None:
